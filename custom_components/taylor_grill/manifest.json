@@ -1,9 +1,10 @@
 {
   "domain": "taylor_grill",
   "name": "Taylor Grill",
-  "codeowners": ["@death2all110"],
+  "codeowners": [ "@death2all110" ],
   "dependencies": [ "mqtt" ],
   "documentation": "https://github.com/death2all110/ha-taylorgrill",
   "iot_class": "local_push",
-  "version": "1.0.0"
+  "version": "1.0.0",
+  "config_flow": true
 }
