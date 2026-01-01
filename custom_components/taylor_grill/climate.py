@@ -46,8 +46,8 @@ class TaylorSmoker(ClimateEntity):
     _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
     _attr_temperature_unit = UnitOfTemperature.FAHRENHEIT
     _attr_min_temp = 180
-    _attr_max_temp = 450
-    _attr_target_temperature_step = 10
+    _attr_max_temp = 500
+    _attr_target_temperature_step = 5
 
     def __init__(self, hass, name, device_id, unique_id):
         self.hass = hass
@@ -148,13 +148,15 @@ class TaylorSmoker(ClimateEntity):
         # Calculate Hundreds and Tens
         range_byte = target // 100
         offset_byte = (target % 100) // 10
+        units_byte = target % 10  # This handles the 5-degree step
         
         # Safety Clamps
         if range_byte > 5: range_byte = 5
         if range_byte < 1: range_byte = 1
         
-        # Construct Packet: FA 09 FE 05 01 [R] [O] 00 FF
-        packet = bytearray([0xFA, 0x09, 0xFE, 0x05, 0x01, range_byte, offset_byte, 0x00, 0xFF])
+        # Construct Packet: FA 09 FE 05 01 [R] [O] [U] FF
+        # We fill the previously empty byte (index 7) with units_byte
+        packet = bytearray([0xFA, 0x09, 0xFE, 0x05, 0x01, range_byte, offset_byte, units_byte, 0xFF])
         
         await mqtt.async_publish(self.hass, self._topic_cmd, packet)
         self._target_temp = target
