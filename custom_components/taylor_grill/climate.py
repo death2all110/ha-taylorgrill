@@ -59,7 +59,7 @@ class TaylorSmoker(ClimateEntity):
         self._topic_state = f"{device_id}/dev2app"
         
         self._hvac_mode = HVACMode.OFF
-        self._target_temp = 180
+        self._target_temp = 350
         self._current_temp = None
 
     async def async_added_to_hass(self):
