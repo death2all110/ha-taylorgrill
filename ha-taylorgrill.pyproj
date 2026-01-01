@@ -30,10 +30,14 @@
     <Compile Include="hacs.json" />
   </ItemGroup>
   <ItemGroup>
+    <Folder Include=".github\" />
+    <Folder Include=".github\workflows\" />
     <Folder Include="custom_components\" />
     <Folder Include="custom_components\taylor_grill\" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include=".github\workflows\hacs.yml" />
+    <Content Include=".github\workflows\hassfest.yml" />
     <Content Include="custom_components\taylor_grill\manifest.json" />
     <Content Include="icon.png" />
     <Content Include="README.md" />
