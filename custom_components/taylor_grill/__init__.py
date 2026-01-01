@@ -7,13 +7,13 @@ from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
 
-# List the platforms we support (just Climate for now)
-PLATFORMS: list[Platform] = [Platform.CLIMATE]
+# Add SENSOR and SWITCH to the list of platforms
+PLATFORMS: list[Platform] = [Platform.CLIMATE, Platform.SENSOR, Platform.SWITCH]
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Taylor Grill from a config entry."""
     
-    # Forward the setup to the climate platform
+    # Forward the setup to all platforms (Climate, Sensor, Switch)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 

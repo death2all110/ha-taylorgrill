@@ -24,6 +24,8 @@
     <Compile Include="custom_components\taylor_grill\climate.py" />
     <Compile Include="custom_components\taylor_grill\config_flow.py" />
     <Compile Include="custom_components\taylor_grill\const.py" />
+    <Compile Include="custom_components\taylor_grill\sensor.py" />
+    <Compile Include="custom_components\taylor_grill\switch.py" />
     <Compile Include="custom_components\taylor_grill\__init__.py" />
     <Compile Include="hacs.json" />
   </ItemGroup>
