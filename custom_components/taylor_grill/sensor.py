@@ -26,10 +26,10 @@ async def async_setup_entry(
     
     # Create 4 Sensors
     sensors = [
-        TaylorSmokerSensor(hass, name, device_id, entry.entry_id, "Internal Probe", 1),
-        TaylorSmokerSensor(hass, name, device_id, entry.entry_id, "Probe 2", 2),
-        TaylorSmokerSensor(hass, name, device_id, entry.entry_id, "Probe 3", 3),
-        TaylorSmokerSensor(hass, name, device_id, entry.entry_id, "Probe 4", 4),
+        TaylorSmokerSensor(hass, name, device_id, entry.entry_id, "Internal Probe", 0),
+        TaylorSmokerSensor(hass, name, device_id, entry.entry_id, "External Probe 1", 1),
+        TaylorSmokerSensor(hass, name, device_id, entry.entry_id, "External Probe 2", 2),
+        TaylorSmokerSensor(hass, name, device_id, entry.entry_id, "External Probe 3", 3),
     ]
     
     async_add_entities(sensors)
@@ -75,19 +75,19 @@ class TaylorSmokerSensor(SensorEntity):
             return
 
         # BYTE MAPPING (Based on Triplet Logic)
-        # Probe 1 (Internal): Bytes 22, 23, 24
-        # Probe 2: Bytes 4, 5, 6
-        # Probe 3: Bytes 7, 8, 9
-        # Probe 4: Bytes 10, 11, 12
+        # Probe 0 (Internal): Bytes 22, 23, 24
+        # Probe 1: Bytes 4, 5, 6
+        # Probe 2: Bytes 7, 8, 9
+        # Probe 3: Bytes 10, 11, 12
         
         try:
-            if self._probe_index == 1:
+            if self._probe_index == 0:
                 start_byte = 22
-            elif self._probe_index == 2:
+            elif self._probe_index == 1:
                 start_byte = 4
-            elif self._probe_index == 3:
+            elif self._probe_index == 2:
                 start_byte = 7
-            elif self._probe_index == 4:
+            elif self._probe_index == 3:
                 start_byte = 10
             else:
                 return
