@@ -1,4 +1,5 @@
 {
   "name": "Taylor Grill",
-  "render_readme": true
+  "render_readme": true,
+  "country": "US"
 }
