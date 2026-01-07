@@ -20,7 +20,7 @@ This integration requires "hijacking" the smoker's connection to the cloud. Once
 This software is provided "as is", without warranty of any kind, express or implied. Use it at your own risk. The authors take no responsibility for any damage to your hardware, voided warranties, or ruined briskets.
 
 **3. Compatibility**
-This integration has been tested specifically with [this Replacement Thermostat Controller](https://www.amazon.com/Replacement-Thermostat-Controller-Bluetooth-Temperature/dp/B0FVK8N5MS). While it *should* work with other "Taylor Grill" branded controllers that use the same Tuya/ESP32 architecture and port 1883/18041, it is not guaranteed.
+This integration has been tested specifically with [this Replacement Thermostat Controller](https://www.amazon.com/Replacement-Thermostat-Controller-Bluetooth-Temperature/dp/B0FVK8N5MS). While it *should* work with other "Taylor Grill" branded controllers that use the same ESP32 architecture and port 1883/18041, it is not guaranteed.
 
 ---
 
