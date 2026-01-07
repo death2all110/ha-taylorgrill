@@ -36,10 +36,25 @@ The smoker is hardcoded to connect to `iot.taylorgrill.com`. You must redirect t
         * **IP:** `[Your Home Assistant IP]`
     
 * **Option B: NAT Redirection (Best/Most Robust)**
-    * In your Router/Firewall (EdgeRouter, OPNsense, PfSense), create a NAT Rule to hijack port 1883:
-        * **Source:** `[Smoker IP]`
+    * In your Router/Firewall (e.g., EdgeRouter, OPNsense, pfSense, UniFi), you must perform **TWO** steps to hijack port 1883.
+    
+    * **Step 1: Destination NAT (DNAT)**
+        * **Goal:** Catch the traffic leaving the smoker.
+        * **Interface:** LAN (or the network your smoker is on).
+        * **Source IP:** `[Smoker IP]`
         * **Destination Port:** `1883` (MQTT)
-        * **Action:** Redirect to `[Your Home Assistant IP]`
+        * **Action/Translation:** Redirect to `[Your Home Assistant IP]` at Port `1883`.
+
+    * **Step 2: Source NAT / Masquerade (Crucial!)**
+        * **Goal:** Trick Home Assistant into replying to the *Router* instead of the Smoker.
+        * **Interface:** LAN (or the network your smoker is on).
+        * **Rule Type:** Source NAT (SNAT) or "Outbound NAT".
+        * **Source IP:** `[Smoker IP]`
+        * **Destination IP:** `[Your Home Assistant IP]`
+        * **Destination Port:** `1883`
+        * **Action/Translation:** **Masquerade** (sometimes called "NAT to Interface Address").
+        
+        * **Why?** This ensures the return traffic goes `Home Assistant -> Router -> Smoker`. Without it, HA tries to reply directly to the smoker (`HA -> Smoker`), which the smoker rejects because it's expecting a reply from the Cloud IP.
 
 ### 2. MQTT Broker Credentials
 The smoker will attempt to log in with a hardcoded username and password. You must add this user to your Mosquitto Broker in Home Assistant.
