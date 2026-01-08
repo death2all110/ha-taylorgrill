@@ -100,15 +100,32 @@ Enter GRILLS12345678 (or whatever your log shows) into the setup dialog.
 
 ## Troubleshooting
 
-**Smoker shows "Unavailable"?**
-* Check your Mosquitto logs. Is the device connecting?
-* If not, your **DNS/NAT Redirection** is not working. The smoker must think Home Assistant is `iot.taylorgrill.com`.
+### 1. Enable Debug Logging 
+If you are having issues (weird temperatures, commands not working, etc...), the best way to see what is happening is to enable debug logging. This will print the raw hex data coming from the smoker to your Home Assistant logs.
 
-**Temperature readings are weird?**
-* The smoker reports different data packets for "Status" vs "Sensors". This integration automatically filters them, but ensure you have a stable Wi-Fi connection.
+1.  Go to **Settings** > **Devices & Services**.
+2.  Click on the **Taylor Grill** integration.
+3.  On the left side, click **Enable Debug Logging** (Newer HA releases have this in the 3 dot menu in the upper right).
+4.  Interact with the device (turn it on, change temp, etc.).
+5.  When finished, click **Disable Debug Logging**.
+6.  The log file will show lines starting with `RAW MQTT PACKET`.
 
-**Can't control the grill?**
-* Ensure the "Power" switch in Home Assistant is matching the physical state. The integration relies on MQTT "Command" topics (`/app2dev`) which require the broker to be fully operational.
+### 2. Smoker shows "Unavailable" or Won't Connect
+* **Check Mosquitto Logs:** Does it show "New client connected"?
+* **Check for "Triangle Routing" (NAT Users):** If you see the smoker connect and immediately disconnect (or see `RST` flags in tcpdump), you likely missed **Step 2 (Masquerade/SNAT)** in the Network Setup.
+    * *Symptom:* HA replies to the smoker, but the smoker rejects the packet because it came from the wrong IP.
+    * *Fix:* Ensure your Router is configured to **Masquerade** traffic destined for Port 1883.
+
+### 3. Temperature readings are wrong or missing?
+* **Internal Probe:** If the Internal Probe reads "Unknown" or weird values, enable Debug Logging and check the raw hex.
+     * A good tip is to enable debug logging and then hold the internal probe in your hand or pinch between 2 fingers to warm it up. Do this for a couple of minutes to see if the temperature updates.
+* **External Probes:** The smoker only reports external probe temps when they are plugged in. If unplugged, they will show "Unknown".
+    * The integration ignores values where the "Hundreds" digit is > 5 (e.g., 960°F) as these are usually error codes from the hardware.
+* **Packet Filtering:** The smoker sends two types of messages: "Status" (On/Off) and "Sensors" (Temps). The integration filters these automatically, but a weak Wi-Fi signal can cause packet loss.
+
+### 4. Can't control the grill?
+* **Check Power State:** Ensure the "Power" switch in Home Assistant matches the physical state of the grill.
+* **Verify Topics:** Enable Debug Logging and look for `Sending Set Temp...`. If you see the log but the grill doesn't beep, the grill might not be subscribed to the `/app2dev` command topic (check your Device ID configuration).
 
 ---
 ## Contributing
