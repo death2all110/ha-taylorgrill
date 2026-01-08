@@ -76,12 +76,14 @@ class TaylorSmokerSwitch(SwitchEntity):
 
     async def async_turn_on(self, **kwargs):
         """Turn the switch on."""
+        _LOGGER.debug(f"Turning smoker ON: {CMD_ON.hex()}")
         await mqtt.async_publish(self.hass, self._topic_cmd, CMD_ON)
         self._is_on = True
         self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs):
         """Turn the switch off."""
+        _LOGGER.debug(f"Turning smoker OFF: {CMD_OFF.hex()}")
         await mqtt.async_publish(self.hass, self._topic_cmd, CMD_OFF)
         self._is_on = False
         self.async_write_ha_state()

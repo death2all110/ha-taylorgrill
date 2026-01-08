@@ -74,6 +74,8 @@ class TaylorSmoker(ClimateEntity):
 
     def _parse_status(self, payload):
         """Parse the binary status message."""
+
+        _LOGGER.debug(f"RAW MQTT PACKET (Climate): {payload.hex()}")
         # Basic Validation
         if len(payload) < 10 or payload[0] != 0xFA:
             return
@@ -130,9 +132,11 @@ class TaylorSmoker(ClimateEntity):
     async def async_set_hvac_mode(self, hvac_mode):
         """Set new target hvac mode."""
         if hvac_mode == HVACMode.HEAT:
+            _LOGGER.debug(f"Sending ON Command: {CMD_ON.hex()}")
             await mqtt.async_publish(self.hass, self._topic_cmd, CMD_ON)
             self._hvac_mode = HVACMode.HEAT
         else:
+            _LOGGER.debug(f"Sending OFF Command: {CMD_OFF.hex()}")
             await mqtt.async_publish(self.hass, self._topic_cmd, CMD_OFF)
             self._hvac_mode = HVACMode.OFF
         
@@ -158,6 +162,8 @@ class TaylorSmoker(ClimateEntity):
         # We fill the previously empty byte (index 7) with units_byte
         packet = bytearray([0xFA, 0x09, 0xFE, 0x05, 0x01, range_byte, offset_byte, units_byte, 0xFF])
         
+        _LOGGER.debug(f"Sending Set Temp {target}F Command: {packet.hex()}")
+
         await mqtt.async_publish(self.hass, self._topic_cmd, packet)
         self._target_temp = target
         self.async_write_ha_state()

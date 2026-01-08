@@ -66,6 +66,11 @@ class TaylorSmokerSensor(SensorEntity):
 
     def _parse_status(self, payload):
         """Parse the binary status message for specific probes."""
+        # --- DEBUG LOGGING START ---
+        # Log the raw hex string (Only for Probe 0 to prevent 4x duplicate logs)
+        if self._probe_index == 0:
+            _LOGGER.debug(f"RAW MQTT PACKET: {payload.hex()}")
+        # --- DEBUG LOGGING END ---
         # Validation
         if len(payload) < 25 or payload[0] != 0xFA:
             return
