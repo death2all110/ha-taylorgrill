@@ -1,5 +1,6 @@
 """Climate platform for Taylor Grill."""
 import logging
+from datetime import timedelta
 from homeassistant.components.climate import ClimateEntity
 from homeassistant.components.climate.const import (
     HVACMode,
@@ -14,14 +15,19 @@ from homeassistant.components import mqtt
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_track_time_interval
 
-from .const import CONF_DEVICE_ID
+from .const import CONF_DEVICE_ID, CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
-# Binary Commands
+# Commands
 CMD_ON = bytes.fromhex("fa06fe0101ff")
 CMD_OFF = bytes.fromhex("fa06fe0102ff")
+CMD_POLL_STATUS = bytes.fromhex("fa06fe0b01ff")
+CMD_POLL_TEMPS  = bytes.fromhex("fa06fe0e01ff")
+CMD_POLL_TARGET = bytes.fromhex("fa06fe0d01ff")
+CMD_HANDSHAKE   = bytes.fromhex("fa06fe5f01ff")
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -29,13 +35,13 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Taylor Grill climate platform."""
-    
-    # 1. Get User Input
     name = entry.data[CONF_NAME]
     device_id = entry.data[CONF_DEVICE_ID]
+    poll_interval = entry.data.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
     
-    # 2. Create the Entity
-    async_add_entities([TaylorSmoker(hass, name, device_id, entry.entry_id)])
+    if poll_interval < 5:
+        poll_interval = 5
+    async_add_entities([TaylorSmoker(hass, name, device_id, entry.entry_id, poll_interval)])
 
 
 class TaylorSmoker(ClimateEntity):
@@ -49,10 +55,11 @@ class TaylorSmoker(ClimateEntity):
     _attr_max_temp = 500
     _attr_target_temperature_step = 5
 
-    def __init__(self, hass, name, device_id, unique_id):
+    def __init__(self, hass, name, device_id, unique_id, poll_interval):
         self.hass = hass
         self._attr_name = name
         self._attr_unique_id = unique_id
+        self._poll_interval = poll_interval
         
         # Build Topics Dynamically
         self._topic_cmd = f"{device_id}/app2dev"
@@ -63,7 +70,7 @@ class TaylorSmoker(ClimateEntity):
         self._current_temp = None
 
     async def async_added_to_hass(self):
-        """Subscribe to MQTT topics."""
+        """Subscribe to MQTT topics and start polling."""
         @callback
         def message_received(message):
             self._parse_status(message.payload)
@@ -71,12 +78,34 @@ class TaylorSmoker(ClimateEntity):
         await mqtt.async_subscribe(
             self.hass, self._topic_state, message_received, encoding=None
         )
+        
+        _LOGGER.debug(f"Sending Handshake: {CMD_HANDSHAKE.hex()}")
+        await mqtt.async_publish(self.hass, self._topic_cmd, CMD_HANDSHAKE)
+
+        # 3. Start Polling Loop (Keep Alive)
+        _LOGGER.debug(f"Starting Polling Loop ({self._poll_interval}s)")
+        self.async_on_remove(
+            async_track_time_interval(
+                self.hass, self._send_poll_commands, timedelta(seconds=self._poll_interval)
+            )
+        )
+
+    async def _send_poll_commands(self, now=None):
+        """Send polling commands to request status updates."""
+        # Request Status (State)
+        await mqtt.async_publish(self.hass, self._topic_cmd, CMD_POLL_STATUS)
+        
+        # Request Temps (Probes)
+        await mqtt.async_publish(self.hass, self._topic_cmd, CMD_POLL_TEMPS)
+        
+        # Request Target (Set Point)
+        await mqtt.async_publish(self.hass, self._topic_cmd, CMD_POLL_TARGET)
+
 
     def _parse_status(self, payload):
         """Parse the binary status message."""
 
         _LOGGER.debug(f"RAW MQTT PACKET (Climate): {payload.hex()}")
-        # Basic Validation
         if len(payload) < 10 or payload[0] != 0xFA:
             return
 
@@ -85,7 +114,7 @@ class TaylorSmoker(ClimateEntity):
         # 0x0E = Sensor Update (Temperatures)
         packet_type = payload[3]
 
-        # --- LOGIC FOR STATE PACKET (0x0B) ---
+        # --- STATE PACKET (0x0B) ---
         if packet_type == 0x0B:
             # Byte 5 contains the State
             # 0x01 = Running
@@ -101,16 +130,13 @@ class TaylorSmoker(ClimateEntity):
             except IndexError:
                 pass
 
-        # --- LOGIC FOR SENSOR PACKET (0x0E) ---
+        # --- SENSOR PACKET (0x0E) ---
         elif packet_type == 0x0E and len(payload) >= 25:
-            # The Grill Temp is at the very end of the packet (Bytes 22, 23, 24)
-            # Format: [Hundreds] [Tens] [Units]
             try:
                 hundreds = payload[22]
                 tens = payload[23]
                 units = payload[24]
                 
-                # Sanity check to avoid reading garbage data
                 if hundreds <= 9 and tens <= 9 and units <= 9:
                     self._current_temp = (hundreds * 100) + (tens * 10) + units
                     self.async_write_ha_state()
@@ -149,21 +175,17 @@ class TaylorSmoker(ClimateEntity):
         
         target = int(temp)
         
-        # Calculate Hundreds and Tens
         range_byte = target // 100
         offset_byte = (target % 100) // 10
-        units_byte = target % 10  # This handles the 5-degree step
+        units_byte = target % 10
         
-        # Safety Clamps
         if range_byte > 5: range_byte = 5
         if range_byte < 1: range_byte = 1
         
-        # Construct Packet: FA 09 FE 05 01 [R] [O] [U] FF
-        # We fill the previously empty byte (index 7) with units_byte
         packet = bytearray([0xFA, 0x09, 0xFE, 0x05, 0x01, range_byte, offset_byte, units_byte, 0xFF])
         
         _LOGGER.debug(f"Sending Set Temp {target}F Command: {packet.hex()}")
-
+        
         await mqtt.async_publish(self.hass, self._topic_cmd, packet)
         self._target_temp = target
         self.async_write_ha_state()

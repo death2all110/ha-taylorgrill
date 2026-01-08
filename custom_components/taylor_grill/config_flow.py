@@ -8,15 +8,24 @@ from homeassistant import config_entries
 from homeassistant.const import CONF_NAME
 from homeassistant.data_entry_flow import FlowResult
 
-from .const import DOMAIN, CONF_DEVICE_ID, DEFAULT_NAME
+from .const import (
+    DOMAIN, 
+    CONF_DEVICE_ID, 
+    DEFAULT_NAME,
+    CONF_POLL_INTERVAL,
+    DEFAULT_POLL_INTERVAL
+    )
+
 
 _LOGGER = logging.getLogger(__name__)
 
-# The Schema: What fields do we show the user?
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_NAME, default=DEFAULT_NAME): str,
         vol.Required(CONF_DEVICE_ID): str,
+        vol.Optional(CONF_POLL_INTERVAL, default=DEFAULT_POLL_INTERVAL): vol.All(
+            vol.Coerce(int), vol.Range(min=5)
+        ),
     }
 )
 
