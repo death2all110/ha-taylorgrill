@@ -1,5 +1,7 @@
 """Constants for the Taylor Grill integration."""
 
+from homeassistant.const import UnitOfTemperature
+
 DOMAIN = "taylor_grill"
 CONF_DEVICE_ID = "device_id"
 CONF_POLL_INTERVAL = "poll_interval"
@@ -7,4 +9,4 @@ CONF_TEMP_UNIT = "temp_unit"
 
 DEFAULT_NAME = "Taylor Grill Smoker"
 DEFAULT_POLL_INTERVAL = 30 # in seconds
-DEFAULT_TEMP_UNIT = "Fahrenheit"
+DEFAULT_TEMP_UNIT = UnitOfTemperature.FAHRENHEIT

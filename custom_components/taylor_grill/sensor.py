@@ -49,7 +49,7 @@ class TaylorSmokerSensor(SensorEntity):
         self._attr_unique_id = f"{entry_id}_probe_{probe_index}"
         self._probe_index = probe_index
         
-        self._is_celsius = temp_unit == "Celsius"
+        self._is_celsius = temp_unit == UnitOfTemperature.CELSIUS
         if self._is_celsius:
              self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
         else:

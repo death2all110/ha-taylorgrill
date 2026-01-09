@@ -5,7 +5,7 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.const import CONF_NAME
+from homeassistant.const import CONF_NAME, UnitOfTemperature
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.selector import (
     SelectSelector,
@@ -35,8 +35,9 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         ),
         vol.Optional(CONF_TEMP_UNIT, default=DEFAULT_TEMP_UNIT): SelectSelector(
             SelectSelectorConfig(
-                options=["Fahrenheit", "Celsius"],
-                mode=SelectSelectorMode.DROPDOWN,
+                options=[UnitOfTemperature.FAHRENHEIT,UnitOfTemperature.CELSIUS],
+                mode=SelectSelectorMode.LIST,
+                multiple=False
             )
         ),
     }

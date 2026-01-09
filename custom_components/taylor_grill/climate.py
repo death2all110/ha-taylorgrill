@@ -58,7 +58,7 @@ class TaylorSmoker(ClimateEntity):
         self._attr_name = name
         self._attr_unique_id = unique_id
         self._poll_interval = poll_interval
-        self._is_celsius = temp_unit == "Celsius"
+        self._is_celsius = temp_unit == UnitOfTemperature.CELSIUS
         
         # Configure Units & Limits based on selection
         if self._is_celsius:
