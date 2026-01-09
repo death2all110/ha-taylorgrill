@@ -23,7 +23,10 @@ async def async_setup_entry(
     """Set up the Taylor Grill sensors."""
     name = entry.data[CONF_NAME]
     device_id = entry.data[CONF_DEVICE_ID]
-    temp_unit = entry.data.get(CONF_TEMP_UNIT, DEFAULT_TEMP_UNIT)
+    
+    temp_unit = entry.options.get(
+        CONF_TEMP_UNIT, entry.data.get(CONF_TEMP_UNIT, DEFAULT_TEMP_UNIT)
+    )
     
     sensors = [
         TaylorSmokerSensor(hass, name, device_id, entry.entry_id, "Internal Probe", 0, temp_unit),

@@ -37,8 +37,13 @@ async def async_setup_entry(
     """Set up the Taylor Grill climate platform."""
     name = entry.data[CONF_NAME]
     device_id = entry.data[CONF_DEVICE_ID]
-    poll_interval = entry.data.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
-    temp_unit = entry.data.get(CONF_TEMP_UNIT, DEFAULT_TEMP_UNIT)
+
+    poll_interval = entry.options.get(
+        CONF_POLL_INTERVAL, entry.data.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
+    )
+    temp_unit = entry.options.get(
+        CONF_TEMP_UNIT, entry.data.get(CONF_TEMP_UNIT, DEFAULT_TEMP_UNIT)
+    )
     
     if poll_interval < 5:
         poll_interval = 5

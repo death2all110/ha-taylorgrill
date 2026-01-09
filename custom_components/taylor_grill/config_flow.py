@@ -66,3 +66,44 @@ class TaylorGrillConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             title=user_input[CONF_NAME], 
             data=user_input
         )
+class TaylorGrillOptionsFlowHandler(config_entries.OptionsFlow):
+    """Handle options flow for Taylor Grill."""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialize options flow."""
+        self.config_entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Manage the options."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        # Build schema using current values as defaults
+        options_schema = vol.Schema(
+            {
+                vol.Optional(
+                    CONF_POLL_INTERVAL,
+                    default=self.config_entry.options.get(
+                        CONF_POLL_INTERVAL,
+                        self.config_entry.data.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL),
+                    ),
+                ): vol.All(vol.Coerce(int), vol.Range(min=5)),
+                vol.Optional(
+                    CONF_TEMP_UNIT,
+                    default=self.config_entry.options.get(
+                        CONF_TEMP_UNIT,
+                        self.config_entry.data.get(CONF_TEMP_UNIT, DEFAULT_TEMP_UNIT),
+                    ),
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=[UnitOfTemperature.FAHRENHEIT, UnitOfTemperature.CELSIUS],
+                        mode=SelectSelectorMode.LIST,
+                        multiple=False
+                    )
+                ),
+            }
+        )
+
+        return self.async_show_form(step_id="init", data_schema=options_schema)
