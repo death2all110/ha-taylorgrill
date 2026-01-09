@@ -34,12 +34,13 @@
     <Folder Include=".github\workflows\" />
     <Folder Include="custom_components\" />
     <Folder Include="custom_components\taylor_grill\" />
+    <Folder Include="custom_components\taylor_grill\translations\" />
   </ItemGroup>
   <ItemGroup>
     <Content Include=".github\workflows\hacs.yml" />
     <Content Include=".github\workflows\hassfest.yml" />
     <Content Include="custom_components\taylor_grill\manifest.json" />
-    <Content Include="custom_components\taylor_grill\strings.json" />
+    <Content Include="custom_components\taylor_grill\translations\en.json" />
     <Content Include="icon.png" />
     <Content Include="README.md" />
   </ItemGroup>
