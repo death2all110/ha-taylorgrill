@@ -80,7 +80,7 @@ class TaylorGrillOptionsFlowHandler(config_entries.OptionsFlow):
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
-        self.config_entry = config_entry
+        self._config_entry = config_entry
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -94,16 +94,16 @@ class TaylorGrillOptionsFlowHandler(config_entries.OptionsFlow):
             {
                 vol.Optional(
                     CONF_POLL_INTERVAL,
-                    default=self.config_entry.options.get(
+                    default=self._config_entry.options.get(
                         CONF_POLL_INTERVAL,
-                        self.config_entry.data.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL),
+                        self._config_entry.data.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL),
                     ),
                 ): vol.All(vol.Coerce(int), vol.Range(min=5)),
                 vol.Optional(
                     CONF_TEMP_UNIT,
-                    default=self.config_entry.options.get(
+                    default=self._config_entry.options.get(
                         CONF_TEMP_UNIT,
-                        self.config_entry.data.get(CONF_TEMP_UNIT, DEFAULT_TEMP_UNIT),
+                        self._config_entry.data.get(CONF_TEMP_UNIT, DEFAULT_TEMP_UNIT),
                     ),
                 ): SelectSelector(
                     SelectSelectorConfig(
