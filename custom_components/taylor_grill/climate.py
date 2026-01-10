@@ -85,6 +85,8 @@ class TaylorSmoker(ClimateEntity):
         self._hvac_mode = HVACMode.OFF
         self._current_temp = None
 
+        self._pending_target_temp = None
+
     async def async_added_to_hass(self):
         """Subscribe to MQTT topics and start polling."""
         @callback
@@ -113,7 +115,6 @@ class TaylorSmoker(ClimateEntity):
 
     def _parse_status(self, payload):
         """Parse the binary status message (handling multiple packets)."""
-        # 1. Always log the raw data first
         _LOGGER.debug(f"RAW MQTT PACKET (Climate): {payload.hex()}")
 
         if len(payload) < 10 or payload[0] != 0xFA:
@@ -123,7 +124,15 @@ class TaylorSmoker(ClimateEntity):
         if len(payload) >= 6 and payload[3] == 0x0B:
             try:
                 state_byte = payload[5]
+                # 0x01 = Running, 0x06 = Startup
                 if state_byte in [0x01, 0x06]:
+                    # If we were previously OFF (or just ensuring), check for pending tasks
+                    if self._pending_target_temp is not None:
+                         _LOGGER.info(f"Smoker detected ON. Sending queued target temp: {self._pending_target_temp}")
+                         # Schedule the send task (since we are in a sync callback)
+                         self.hass.async_create_task(self._send_target_temp(self._pending_target_temp))
+                         self._pending_target_temp = None
+
                     self._hvac_mode = HVACMode.HEAT
                 elif state_byte == 0x02:
                     self._hvac_mode = HVACMode.OFF
@@ -150,12 +159,9 @@ class TaylorSmoker(ClimateEntity):
             except (IndexError, ValueError):
                 pass
 
-        # --- Parse Target Temp (0x0D)
+        # --- Parse Target Temp (0x0D) ---
         if 0x0D in payload:
             try:
-                # Log that we found the signature
-                _LOGGER.debug("Found hidden Target Temp packet (0x0D) in stack!")
-
                 idx = payload.find(b'\x0D')
                 if idx != -1 and idx + 24 < len(payload):
                     hundreds = payload[idx + 22]
@@ -164,19 +170,15 @@ class TaylorSmoker(ClimateEntity):
                     
                     if hundreds <= 9:
                         raw_target = (hundreds * 100) + (tens * 10) + units
-                        
                         if raw_target > 0:
                             if self._is_celsius:
                                 self._target_temp = round((raw_target - 32) / 1.8)
                             else:
                                 self._target_temp = raw_target
-                            
-                            # Log the value we parsed
-                            _LOGGER.debug(f"Parsed Target Temp from hidden packet: {self._target_temp}")
+                            _LOGGER.debug(f"Parsed Target Temp: {self._target_temp}")
                             self.async_write_ha_state()
-                            
-            except (IndexError, ValueError) as e:
-                _LOGGER.error(f"Error parsing target temp: {e}")
+            except (IndexError, ValueError):
+                pass
 
     @property
     def current_temperature(self):
@@ -200,17 +202,13 @@ class TaylorSmoker(ClimateEntity):
             _LOGGER.debug(f"Sending OFF Command: {CMD_OFF.hex()}")
             await mqtt.async_publish(self.hass, self._topic_cmd, CMD_OFF)
             self._hvac_mode = HVACMode.OFF
+            self._pending_target_temp = None # Clear pending if we turn off
         
         self.async_write_ha_state()
 
-    async def async_set_temperature(self, **kwargs):
-        """Set new target temperature."""
-        if (temp := kwargs.get(ATTR_TEMPERATURE)) is None:
-            return
-        
-        target_val = int(temp)
-        
-        # If in Celsius mode, convert back to Fahrenheit for the grill
+    async def _send_target_temp(self, target_val):
+        """Helper to construct and send the temperature packet."""
+        # Convert to Fahrenheit for the protocol
         if self._is_celsius:
             target_f = int((target_val * 1.8) + 32)
         else:
@@ -226,7 +224,27 @@ class TaylorSmoker(ClimateEntity):
         packet = bytearray([0xFA, 0x09, 0xFE, 0x05, 0x01, range_byte, offset_byte, units_byte, 0xFF])
         
         _LOGGER.debug(f"Sending Set Temp {target_val} ({target_f}F) Command: {packet.hex()}")
-        
         await mqtt.async_publish(self.hass, self._topic_cmd, packet)
+        
+        # Optimistically update the state so the UI feels responsive
         self._target_temp = target_val
         self.async_write_ha_state()
+
+    async def async_set_temperature(self, **kwargs):
+        """Set new target temperature."""
+        if (temp := kwargs.get(ATTR_TEMPERATURE)) is None:
+            return
+        
+        target_val = int(temp)
+        
+        # Check if the device is OFF
+        if self._hvac_mode == HVACMode.OFF:
+            _LOGGER.info(f"Smoker is OFF. Queuing temp {target_val} to send on startup.")
+            self._pending_target_temp = target_val
+            
+            # Optimistically update the UI to show the user's request
+            self._target_temp = target_val
+            self.async_write_ha_state()
+        else:
+            # Device is ON, send immediately
+            await self._send_target_temp(target_val)
