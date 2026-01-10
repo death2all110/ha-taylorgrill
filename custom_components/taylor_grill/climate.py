@@ -114,40 +114,45 @@ class TaylorSmoker(ClimateEntity):
         await mqtt.async_publish(self.hass, self._topic_cmd, CMD_POLL_TARGET)
 
     def _parse_status(self, payload):
-        """Parse the binary status message (handling multiple packets)."""
+        """Parse the binary status message (handling multiple/stacked packets)."""
         _LOGGER.debug(f"RAW MQTT PACKET (Climate): {payload.hex()}")
 
         if len(payload) < 10 or payload[0] != 0xFA:
             return
 
-        # --- Parse Status (On/Off) ---
-        if len(payload) >= 6 and payload[3] == 0x0B:
+        # --- Parse Status (0x0B) ---
+        # Status usually appears at the start or end, looking for FE 0B is safest
+        if b'\xFE\x0B' in payload:
             try:
-                state_byte = payload[5]
-                # 0x01 = Running, 0x06 = Startup
-                if state_byte in [0x01, 0x06]:
-                    # If we were previously OFF (or just ensuring), check for pending tasks
-                    if self._pending_target_temp is not None:
-                         _LOGGER.info(f"Smoker detected ON. Sending queued target temp: {self._pending_target_temp}")
-                         # Schedule the send task (since we are in a sync callback)
-                         self.hass.async_create_task(self._send_target_temp(self._pending_target_temp))
-                         self._pending_target_temp = None
-
-                    self._hvac_mode = HVACMode.HEAT
-                elif state_byte == 0x02:
-                    self._hvac_mode = HVACMode.OFF
-                self.async_write_ha_state()
+                # Find the FE 0B sequence
+                idx = payload.find(b'\xFE\x0B')
+                # Status byte is 2 bytes after FE 0B (FE 0B Len State)
+                # Structure: FE 0B 01 [State]
+                if idx != -1 and idx + 3 < len(payload):
+                    state_byte = payload[idx + 3]
+                    
+                    if state_byte in [0x01, 0x06]:
+                        # Check queue logic
+                        if self._pending_target_temp is not None:
+                             _LOGGER.info(f"Smoker detected ON. Sending queued target temp: {self._pending_target_temp}")
+                             self.hass.async_create_task(self._send_target_temp(self._pending_target_temp))
+                             self._pending_target_temp = None
+                        self._hvac_mode = HVACMode.HEAT
+                    elif state_byte == 0x02:
+                        self._hvac_mode = HVACMode.OFF
+                    self.async_write_ha_state()
             except IndexError:
                 pass
 
         # --- Parse Current Temps (0x0E) ---
-        if 0x0E in payload:
+        # Search for FE 0E (Header + Type)
+        if b'\xFE\x0E' in payload:
             try:
-                idx = payload.find(b'\x0E')
-                if idx != -1 and idx + 21 < len(payload):
-                    hundreds = payload[idx + 19]
-                    tens = payload[idx + 20]
-                    units = payload[idx + 21]
+                idx = payload.find(b'\xFE\x0E')
+                if idx != -1 and idx + 22 < len(payload):
+                    hundreds = payload[idx + 20]
+                    tens = payload[idx + 21]
+                    units = payload[idx + 22]
                     
                     if hundreds <= 9 and tens <= 9 and units <= 9:
                         raw_f = (hundreds * 100) + (tens * 10) + units
@@ -160,13 +165,14 @@ class TaylorSmoker(ClimateEntity):
                 pass
 
         # --- Parse Target Temp (0x0D) ---
-        if 0x0D in payload:
+        # Search for FE 0D (Header + Type)
+        if b'\xFE\x0D' in payload:
             try:
-                idx = payload.find(b'\x0D')
-                if idx != -1 and idx + 24 < len(payload):
-                    hundreds = payload[idx + 22]
-                    tens = payload[idx + 23]
-                    units = payload[idx + 24]
+                idx = payload.find(b'\xFE\x0D')
+                if idx != -1 and idx + 25 < len(payload):
+                    hundreds = payload[idx + 23]
+                    tens = payload[idx + 24]
+                    units = payload[idx + 25]
                     
                     if hundreds <= 9:
                         raw_target = (hundreds * 100) + (tens * 10) + units
@@ -175,7 +181,6 @@ class TaylorSmoker(ClimateEntity):
                                 self._target_temp = round((raw_target - 32) / 1.8)
                             else:
                                 self._target_temp = raw_target
-                            _LOGGER.debug(f"Parsed Target Temp: {self._target_temp}")
                             self.async_write_ha_state()
             except (IndexError, ValueError):
                 pass
