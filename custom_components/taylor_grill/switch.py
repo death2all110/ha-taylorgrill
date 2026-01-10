@@ -53,6 +53,7 @@ class TaylorSmokerSwitch(SwitchEntity):
 
     def _parse_status(self, payload):
         """Parse status for On/Off state."""
+        _LOGGER.debug(f"RAW MQTT PACKET (Switch): {payload.hex()}")
         if len(payload) < 10 or payload[0] != 0xFA:
             return
 

@@ -112,15 +112,15 @@ class TaylorSmoker(ClimateEntity):
         await mqtt.async_publish(self.hass, self._topic_cmd, CMD_POLL_TARGET)
 
     def _parse_status(self, payload):
-        """Parse the binary status message."""
+        """Parse the binary status message (handling multiple packets)."""
+        # 1. Always log the raw data first
         _LOGGER.debug(f"RAW MQTT PACKET (Climate): {payload.hex()}")
 
         if len(payload) < 10 or payload[0] != 0xFA:
             return
 
-        packet_type = payload[3]
-
-        if packet_type == 0x0B:
+        # --- Parse Status (On/Off) ---
+        if len(payload) >= 6 and payload[3] == 0x0B:
             try:
                 state_byte = payload[5]
                 if state_byte in [0x01, 0x06]:
@@ -131,23 +131,52 @@ class TaylorSmoker(ClimateEntity):
             except IndexError:
                 pass
 
-        elif packet_type == 0x0E and len(payload) >= 25:
+        # --- Parse Current Temps (0x0E) ---
+        if 0x0E in payload:
             try:
-                hundreds = payload[22]
-                tens = payload[23]
-                units = payload[24]
-                
-                if hundreds <= 9 and tens <= 9 and units <= 9:
-                    raw_f = (hundreds * 100) + (tens * 10) + units
+                idx = payload.find(b'\x0E')
+                if idx != -1 and idx + 21 < len(payload):
+                    hundreds = payload[idx + 19]
+                    tens = payload[idx + 20]
+                    units = payload[idx + 21]
                     
-                    if self._is_celsius:
-                        self._current_temp = round((raw_f - 32) / 1.8)
-                    else:
-                        self._current_temp = raw_f
-                        
-                    self.async_write_ha_state()
-            except IndexError:
+                    if hundreds <= 9 and tens <= 9 and units <= 9:
+                        raw_f = (hundreds * 100) + (tens * 10) + units
+                        if self._is_celsius:
+                            self._current_temp = round((raw_f - 32) / 1.8)
+                        else:
+                            self._current_temp = raw_f
+                        self.async_write_ha_state()
+            except (IndexError, ValueError):
                 pass
+
+        # --- Parse Target Temp (0x0D)
+        if 0x0D in payload:
+            try:
+                # Log that we found the signature
+                _LOGGER.debug("Found hidden Target Temp packet (0x0D) in stack!")
+
+                idx = payload.find(b'\x0D')
+                if idx != -1 and idx + 24 < len(payload):
+                    hundreds = payload[idx + 22]
+                    tens = payload[idx + 23]
+                    units = payload[idx + 24]
+                    
+                    if hundreds <= 9:
+                        raw_target = (hundreds * 100) + (tens * 10) + units
+                        
+                        if raw_target > 0:
+                            if self._is_celsius:
+                                self._target_temp = round((raw_target - 32) / 1.8)
+                            else:
+                                self._target_temp = raw_target
+                            
+                            # Log the value we parsed
+                            _LOGGER.debug(f"Parsed Target Temp from hidden packet: {self._target_temp}")
+                            self.async_write_ha_state()
+                            
+            except (IndexError, ValueError) as e:
+                _LOGGER.error(f"Error parsing target temp: {e}")
 
     @property
     def current_temperature(self):
