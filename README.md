@@ -82,7 +82,7 @@ The smoker will attempt to log in with a hardcoded username and password. You mu
 2.  Click **+ Add Integration**.
 3.  Search for **"Taylor Grill"**.
 4.  Enter your **Device ID** (see below).
-5.  Enter your polling interval and temperature unit preference.
+5.  Enter your temperature unit preference.
 
 ---
 

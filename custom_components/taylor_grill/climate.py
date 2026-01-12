@@ -1,6 +1,9 @@
 """Climate platform for Taylor Grill."""
 import logging
+import asyncio
 from datetime import timedelta
+import voluptuous as vol
+
 from homeassistant.components.climate import ClimateEntity
 from homeassistant.components.climate.const import (
     HVACMode,
@@ -16,6 +19,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers import config_validation as cv
 
 from .const import CONF_DEVICE_ID, CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL, CONF_TEMP_UNIT, DEFAULT_TEMP_UNIT
 
@@ -29,6 +33,10 @@ CMD_POLL_TEMPS  = bytes.fromhex("fa06fe0e01ff")
 CMD_POLL_TARGET = bytes.fromhex("fa06fe0d01ff")
 CMD_HANDSHAKE   = bytes.fromhex("fa06fe5f01ff")
 
+# Standard QoS 0 is sufficient and reliable for this device
+MQTT_QOS_CMD = 0
+MQTT_RETAIN_CMD = False
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -37,18 +45,16 @@ async def async_setup_entry(
     """Set up the Taylor Grill climate platform."""
     name = entry.data[CONF_NAME]
     device_id = entry.data[CONF_DEVICE_ID]
-
-    poll_interval = entry.options.get(
-        CONF_POLL_INTERVAL, entry.data.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
-    )
+    
+    # Hardcoded to 2 seconds to match Android App heartbeat
+    poll_interval = 2
+    
     temp_unit = entry.options.get(
         CONF_TEMP_UNIT, entry.data.get(CONF_TEMP_UNIT, DEFAULT_TEMP_UNIT)
     )
     
-    if poll_interval < 5:
-        poll_interval = 5
-    
-    async_add_entities([TaylorSmoker(hass, name, device_id, entry.entry_id, poll_interval, temp_unit)])
+    smoker = TaylorSmoker(hass, name, device_id, entry.entry_id, poll_interval, temp_unit)
+    async_add_entities([smoker])
 
 
 class TaylorSmoker(ClimateEntity):
@@ -65,13 +71,12 @@ class TaylorSmoker(ClimateEntity):
         self._poll_interval = poll_interval
         self._is_celsius = temp_unit == UnitOfTemperature.CELSIUS
         
-        # Configure Units & Limits based on selection
         if self._is_celsius:
             self._attr_temperature_unit = UnitOfTemperature.CELSIUS
-            self._attr_min_temp = 82  # Approx 180F
-            self._attr_max_temp = 260 # Approx 500F
+            self._attr_min_temp = 82
+            self._attr_max_temp = 260
             self._attr_target_temperature_step = 1
-            self._target_temp = 177 # Approx 350F
+            self._target_temp = 177
         else:
             self._attr_temperature_unit = UnitOfTemperature.FAHRENHEIT
             self._attr_min_temp = 180
@@ -85,8 +90,6 @@ class TaylorSmoker(ClimateEntity):
         self._hvac_mode = HVACMode.OFF
         self._current_temp = None
 
-        self._pending_target_temp = None
-
     async def async_added_to_hass(self):
         """Subscribe to MQTT topics and start polling."""
         @callback
@@ -97,91 +100,161 @@ class TaylorSmoker(ClimateEntity):
             self.hass, self._topic_state, message_received, encoding=None
         )
         
-        _LOGGER.debug(f"Sending Handshake: {CMD_HANDSHAKE.hex()}")
-        await mqtt.async_publish(self.hass, self._topic_cmd, CMD_HANDSHAKE)
+        # Initial Wakeup
+        await mqtt.async_publish(self.hass, self._topic_cmd, CMD_HANDSHAKE, qos=MQTT_QOS_CMD, retain=MQTT_RETAIN_CMD)
 
-        _LOGGER.debug(f"Starting Polling Loop ({self._poll_interval}s)")
         self.async_on_remove(
             async_track_time_interval(
-                self.hass, self._send_poll_commands, timedelta(seconds=self._poll_interval)
+                self.hass, self._run_poll_cycle, timedelta(seconds=self._poll_interval)
             )
         )
 
-    async def _send_poll_commands(self, now=None):
-        """Send polling commands."""
-        await mqtt.async_publish(self.hass, self._topic_cmd, CMD_POLL_STATUS)
-        await mqtt.async_publish(self.hass, self._topic_cmd, CMD_POLL_TEMPS)
-        await mqtt.async_publish(self.hass, self._topic_cmd, CMD_POLL_TARGET)
+    async def _run_poll_cycle(self, now=None):
+        """
+        Android App Heartbeat Sequence:
+        Handshake -> Status -> Temps -> Target
+        """
+        # 1. Unlock/Handshake
+        await mqtt.async_publish(self.hass, self._topic_cmd, CMD_HANDSHAKE, qos=MQTT_QOS_CMD, retain=MQTT_RETAIN_CMD)
+        await asyncio.sleep(0.2)
+        
+        # 2. Poll Status (On/Off)
+        await mqtt.async_publish(self.hass, self._topic_cmd, CMD_POLL_STATUS, qos=MQTT_QOS_CMD, retain=MQTT_RETAIN_CMD)
+        await asyncio.sleep(0.2)
+        
+        # 3. Poll Current Probes
+        await mqtt.async_publish(self.hass, self._topic_cmd, CMD_POLL_TEMPS, qos=MQTT_QOS_CMD, retain=MQTT_RETAIN_CMD)
+        await asyncio.sleep(0.2)
+        
+        # 4. Poll Target Temp
+        await mqtt.async_publish(self.hass, self._topic_cmd, CMD_POLL_TARGET, qos=MQTT_QOS_CMD, retain=MQTT_RETAIN_CMD)
+
+    async def async_set_temperature(self, **kwargs):
+        """Set new target temperature immediately."""
+        if (temp := kwargs.get(ATTR_TEMPERATURE)) is None:
+            return
+        
+        target_val = int(temp)
+        
+        if self._is_celsius:
+            target_f = int((target_val * 1.8) + 32)
+        else:
+            target_f = target_val
+        
+        range_byte = target_f // 100
+        offset_byte = (target_f % 100) // 10
+        units_byte = target_f % 10
+        
+        if range_byte > 5: range_byte = 5
+        if range_byte < 1: range_byte = 1
+        
+        # CRITICAL: Convert to immutable bytes() before sending
+        packet = bytes([0xFA, 0x09, 0xFE, 0x05, 0x01, range_byte, offset_byte, units_byte, 0xFF])
+        
+        _LOGGER.debug(f"User Changed Target Temp to {target_val} ({target_f}F). Sending MQTT RAW BYTES: {packet.hex()}")
+        await mqtt.async_publish(self.hass, self._topic_cmd, packet, qos=MQTT_QOS_CMD, retain=MQTT_RETAIN_CMD)
+        
+        # Optimistically update the UI
+        self._target_temp = target_val
+        self.async_write_ha_state()
+
+    async def async_set_hvac_mode(self, hvac_mode):
+        """Set ON/OFF immediately."""
+        if hvac_mode == HVACMode.HEAT:
+            _LOGGER.debug(f"User turned Smoker ON. Sending: {CMD_ON.hex()}")
+            await mqtt.async_publish(self.hass, self._topic_cmd, CMD_ON, qos=MQTT_QOS_CMD, retain=MQTT_RETAIN_CMD)
+            self._hvac_mode = HVACMode.HEAT
+        else:
+            _LOGGER.debug(f"User turned Smoker OFF. Sending: {CMD_OFF.hex()}")
+            await mqtt.async_publish(self.hass, self._topic_cmd, CMD_OFF, qos=MQTT_QOS_CMD, retain=MQTT_RETAIN_CMD)
+            self._hvac_mode = HVACMode.OFF
+        self.async_write_ha_state()
 
     def _parse_status(self, payload):
-        """Parse the binary status message (handling multiple/stacked packets)."""
-        _LOGGER.debug(f"RAW MQTT PACKET (Climate): {payload.hex()}")
-
-        if len(payload) < 10 or payload[0] != 0xFA:
+        """Parse the binary status message."""
+        if len(payload) < 6 or payload[0] != 0xFA:
             return
 
-        # --- Parse Status (0x0B) ---
-        # Status usually appears at the start or end, looking for FE 0B is safest
+        # --- Status Packet (0x0B) ---
         if b'\xFE\x0B' in payload:
             try:
-                # Find the FE 0B sequence
                 idx = payload.find(b'\xFE\x0B')
-                # Status byte is 2 bytes after FE 0B (FE 0B Len State)
-                # Structure: FE 0B 01 [State]
                 if idx != -1 and idx + 3 < len(payload):
                     state_byte = payload[idx + 3]
-                    
-                    if state_byte in [0x01, 0x06]:
-                        # Check queue logic
-                        if self._pending_target_temp is not None:
-                             _LOGGER.info(f"Smoker detected ON. Sending queued target temp: {self._pending_target_temp}")
-                             self.hass.async_create_task(self._send_target_temp(self._pending_target_temp))
-                             self._pending_target_temp = None
-                        self._hvac_mode = HVACMode.HEAT
-                    elif state_byte == 0x02:
+                    # 0x02 is OFF. 0x01 (Startup) and 0x06 (Running) are ON.
+                    if state_byte == 0x02:
+                        if self._hvac_mode != HVACMode.OFF:
+                            _LOGGER.debug(f"Smoker reports Status: OFF (Byte: {state_byte})")
                         self._hvac_mode = HVACMode.OFF
+                    else:
+                        if self._hvac_mode != HVACMode.HEAT:
+                            _LOGGER.debug(f"Smoker reports Status: ON (Byte: {state_byte})")
+                        self._hvac_mode = HVACMode.HEAT
                     self.async_write_ha_state()
             except IndexError:
                 pass
 
-        # --- Parse Current Temps (0x0E) ---
-        # Search for FE 0E (Header + Type)
+        # --- Sensor Packet (0x0E) ---
         if b'\xFE\x0E' in payload:
             try:
                 idx = payload.find(b'\xFE\x0E')
+                # Parse up to 4 probes for logging
+                # Offset mapping: Internal(+20), P1(+23), P2(+26), P3(+29)
+                base = idx + 20
+                if base + 2 < len(payload):
+                    # Internal
+                    h, t, u = payload[base], payload[base+1], payload[base+2]
+                    raw_int = (h * 100) + (t * 10) + u
+                    
+                    # Log other probes if available
+                    log_msg = f"Smoker reports Internal Temp: {raw_int}F"
+                    
+                    # Try P1
+                    if base + 5 < len(payload):
+                        h1, t1, u1 = payload[base+3], payload[base+4], payload[base+5]
+                        raw_p1 = (h1 * 100) + (t1 * 10) + u1
+                        log_msg += f", Probe 1: {raw_p1}F"
+                        
+                    # Try P2
+                    if base + 8 < len(payload):
+                        h2, t2, u2 = payload[base+6], payload[base+7], payload[base+8]
+                        raw_p2 = (h2 * 100) + (t2 * 10) + u2
+                        log_msg += f", Probe 2: {raw_p2}F"
+
+                    _LOGGER.debug(log_msg)
+
+                    # Update Entity State (Internal Probe)
+                    if self._is_celsius:
+                        self._current_temp = round((raw_int - 32) / 1.8)
+                    else:
+                        self._current_temp = raw_int
+                    self.async_write_ha_state()
+            except (IndexError, ValueError):
+                pass
+
+        # --- Target Temp Packet (0x0D) ---
+        if b'\xFE\x0D' in payload:
+            try:
+                idx = payload.find(b'\xFE\x0D')
                 if idx != -1 and idx + 22 < len(payload):
                     hundreds = payload[idx + 20]
                     tens = payload[idx + 21]
                     units = payload[idx + 22]
                     
-                    if hundreds <= 9 and tens <= 9 and units <= 9:
-                        raw_f = (hundreds * 100) + (tens * 10) + units
-                        if self._is_celsius:
-                            self._current_temp = round((raw_f - 32) / 1.8)
-                        else:
-                            self._current_temp = raw_f
-                        self.async_write_ha_state()
-            except (IndexError, ValueError):
-                pass
-
-        # --- Parse Target Temp (0x0D) ---
-        # Search for FE 0D (Header + Type)
-        if b'\xFE\x0D' in payload:
-            try:
-                idx = payload.find(b'\xFE\x0D')
-                if idx != -1 and idx + 25 < len(payload):
-                    hundreds = payload[idx + 23]
-                    tens = payload[idx + 24]
-                    units = payload[idx + 25]
-                    
                     if hundreds <= 9:
                         raw_target = (hundreds * 100) + (tens * 10) + units
-                        if raw_target > 0:
-                            if self._is_celsius:
-                                self._target_temp = round((raw_target - 32) / 1.8)
-                            else:
-                                self._target_temp = raw_target
-                            self.async_write_ha_state()
+                        
+                        if self._is_celsius:
+                            new_target = round((raw_target - 32) / 1.8)
+                        else:
+                            new_target = raw_target
+                        
+                        if new_target > 0:
+                            # Check if changed externally
+                            if self._target_temp != new_target:
+                                _LOGGER.debug(f"Target temp changed outside of HA (or confirmed). Updating UI. New temp: {new_target}")
+                                self._target_temp = new_target
+                                self.async_write_ha_state()
             except (IndexError, ValueError):
                 pass
 
@@ -196,60 +269,3 @@ class TaylorSmoker(ClimateEntity):
     @property
     def hvac_mode(self):
         return self._hvac_mode
-
-    async def async_set_hvac_mode(self, hvac_mode):
-        """Set new target hvac mode."""
-        if hvac_mode == HVACMode.HEAT:
-            _LOGGER.debug(f"Sending ON Command: {CMD_ON.hex()}")
-            await mqtt.async_publish(self.hass, self._topic_cmd, CMD_ON)
-            self._hvac_mode = HVACMode.HEAT
-        else:
-            _LOGGER.debug(f"Sending OFF Command: {CMD_OFF.hex()}")
-            await mqtt.async_publish(self.hass, self._topic_cmd, CMD_OFF)
-            self._hvac_mode = HVACMode.OFF
-            self._pending_target_temp = None # Clear pending if we turn off
-        
-        self.async_write_ha_state()
-
-    async def _send_target_temp(self, target_val):
-        """Helper to construct and send the temperature packet."""
-        # Convert to Fahrenheit for the protocol
-        if self._is_celsius:
-            target_f = int((target_val * 1.8) + 32)
-        else:
-            target_f = target_val
-        
-        range_byte = target_f // 100
-        offset_byte = (target_f % 100) // 10
-        units_byte = target_f % 10
-        
-        if range_byte > 5: range_byte = 5
-        if range_byte < 1: range_byte = 1
-        
-        packet = bytearray([0xFA, 0x09, 0xFE, 0x05, 0x01, range_byte, offset_byte, units_byte, 0xFF])
-        
-        _LOGGER.debug(f"Sending Set Temp {target_val} ({target_f}F) Command: {packet.hex()}")
-        await mqtt.async_publish(self.hass, self._topic_cmd, packet)
-        
-        # Optimistically update the state so the UI feels responsive
-        self._target_temp = target_val
-        self.async_write_ha_state()
-
-    async def async_set_temperature(self, **kwargs):
-        """Set new target temperature."""
-        if (temp := kwargs.get(ATTR_TEMPERATURE)) is None:
-            return
-        
-        target_val = int(temp)
-        
-        # Check if the device is OFF
-        if self._hvac_mode == HVACMode.OFF:
-            _LOGGER.info(f"Smoker is OFF. Queuing temp {target_val} to send on startup.")
-            self._pending_target_temp = target_val
-            
-            # Optimistically update the UI to show the user's request
-            self._target_temp = target_val
-            self.async_write_ha_state()
-        else:
-            # Device is ON, send immediately
-            await self._send_target_temp(target_val)

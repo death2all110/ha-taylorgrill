@@ -7,7 +7,6 @@
         "data": {
           "name": "Name",
           "device_id": "Device ID (e.g., GRILLS...)",
-          "poll_interval": "Polling Interval (seconds)",
           "temp_unit": "Temperature Unit"
         }
       }
@@ -25,7 +24,6 @@
         "title": "Configure Taylor Grill",
         "description": "Update your smoker settings.",
         "data": {
-          "poll_interval": "Polling Interval (seconds)",
           "temp_unit": "Temperature Unit"
         }
       }
