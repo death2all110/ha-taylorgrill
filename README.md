@@ -5,8 +5,16 @@ A fully local Home Assistant integration for **Taylor Grill** Smoker Controllers
 **Features:**
 * 🚀 **100% Local:** Bypasses the cloud entirely.
 * 🌡️ **Full Control:** Set Target Temperature (up to 500°F in 5° increments).
-* 🔌 **Power Control:** Turn the smoker On or Off (Shutdown sequence).
+* 🔌 **Power Control:** Turn the smoker On or Off.
 * 📊 **Sensors:** Reads Internal Probe + 3 External Probes.
+* 🚩 **Binary Sensors:** Reads the error flags that can be sent by the controller and will update the binary sensor in HomeAssistant.
+   * 📝 **Note**: Not all sensors may be used by your model. This integration supports the following error sensors:
+      * Fan Error
+      * Auger Motor Error
+      * Ignition Error
+      * No Pellets (Hopper Empty)
+      * High Temp Alert
+      * System Errors 1/2/3
 * 🛠️ **Config Flow:** Easy setup via Home Assistant UI.
 
 ---
@@ -14,13 +22,15 @@ A fully local Home Assistant integration for **Taylor Grill** Smoker Controllers
 ## ⚠️ Important Warnings
 
 **1. This Will Break the Official App**
-This integration requires "hijacking" the smoker's connection to the cloud. Once configured, your smoker will talk to Home Assistant *instead* of the manufacturer's server. The official mobile app will likely show the device as "Offline" and will no longer function.
+This integration requires "hijacking" the smoker's connection to the cloud. Once configured, your smoker will talk to Home Assistant *instead* of the manufacturer's server. The official mobile app will be unable to connect to the smoker/grill over WiFi. Bluetooth should still work.
 
 **2. Disclaimer**
-This software is provided "as is", without warranty of any kind, express or implied. Use it at your own risk. The authors take no responsibility for any damage to your hardware, voided warranties, or ruined briskets.
+This software is BETA software. It is provided "as is", without warranty of any kind, express or implied. Use it at your own risk. The authors take no responsibility for any damage to your hardware, voided warranties, or ruined briskets.
 
 **3. Compatibility**
 This integration has been tested specifically with [this Replacement Thermostat Controller](https://www.amazon.com/Replacement-Thermostat-Controller-Bluetooth-Temperature/dp/B0FVK8N5MS). While it *should* work with other "Taylor Grill" branded controllers that use the same ESP32 architecture and port 1883/18041, it is not guaranteed.
+   * As long as it uses the "[Smarter Grill](https://play.google.com/store/apps/details?id=com.zhibaowang.jiuze.example.xxx.grill)" app, it should work with this.
+   * It is possible that this will work with devices that use [similar apps from the same developer](https://play.google.com/store/apps/developer?id=My+grill). But this has not been confirmed. If you have a device that uses one of these similar apps, and this integration does not work for you, open an issue, and let me know. I'll try to add support if possible.
 
 ---
 
@@ -87,7 +97,7 @@ The smoker will attempt to log in with a hardcoded username and password. You mu
 ---
 
 ## Finding Your Device ID
-The Device ID is required during setup. It will typically start with `GRILLS`.
+The Device ID is required during setup. It will typically start with `GRILLS`. This is also found in the App and will show as the name when connecting via Bluetooth. It is also sometimes printed on a sticker on the controller itself.
 
 **Check MQTT Logs:**
 If you have successfully set up the Network Hijack (Prerequisite #1), watch your Mosquitto logs when you plug in the smoker. You will see a client connect with the ID you need:
@@ -96,6 +106,19 @@ If you have successfully set up the Network Hijack (Prerequisite #1), watch your
 New client connected from 192.168.1.50 as GRILLS12345678...
 ```
 Enter GRILLS12345678 (or whatever your log shows) into the setup dialog.
+
+---
+
+## 🛣️ Roadmap:
+**Bluetooth:** Expand support to communicate over bluetooth rather than a hijacked MQTT connection.
+
+**App Compatibility:** See if there is a way to keep the app working.
+
+**Additional/Advanced Features:**
+   * **PID:** Explore if it is possible to read/adjust PID (Proportional, Integral, Derivative) values.
+   * **Timer/Recipe:** Explore if its possible to setup a "Recipe" of sorts. Hold the themp at XXX Degrees for Y Hours, then change temp to XXX Degrees for Y Hours.
+
+**Suggestions:** Open an issue and I will let you know if its feasible or not.
 
 ---
 
