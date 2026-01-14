@@ -21,6 +21,7 @@
     <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="custom_components\taylor_grill\binary_sensor.py" />
     <Compile Include="custom_components\taylor_grill\climate.py" />
     <Compile Include="custom_components\taylor_grill\config_flow.py" />
     <Compile Include="custom_components\taylor_grill\const.py" />

@@ -6,6 +6,8 @@
         "description": "Enter the details for your smoker controller.",
         "data": {
           "name": "Name",
+          "manufacturer": "Manufacturer",
+          "model": "Model",
           "device_id": "Device ID (e.g., GRILLS...)",
           "temp_unit": "Temperature Unit"
         }
@@ -24,6 +26,9 @@
         "title": "Configure Taylor Grill",
         "description": "Update your smoker settings.",
         "data": {
+          "name": "Name",
+          "manufacturer": "Manufacturer",
+          "model": "Model",
           "temp_unit": "Temperature Unit"
         }
       }

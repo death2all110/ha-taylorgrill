@@ -19,7 +19,11 @@ from .const import (
     CONF_DEVICE_ID, 
     DEFAULT_NAME, 
     CONF_TEMP_UNIT,
-    DEFAULT_TEMP_UNIT
+    DEFAULT_TEMP_UNIT,
+    CONF_MANUFACTURER,
+    CONF_MODEL,
+    DEFAULT_MANUFACTURER,
+    DEFAULT_MODEL
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -28,6 +32,8 @@ _LOGGER = logging.getLogger(__name__)
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_NAME, default=DEFAULT_NAME): str,
+        vol.Optional(CONF_MANUFACTURER, default=DEFAULT_MANUFACTURER): str,
+        vol.Optional(CONF_MODEL, default=DEFAULT_MODEL): str,
         vol.Required(CONF_DEVICE_ID): str,        
         vol.Optional(CONF_TEMP_UNIT, default=DEFAULT_TEMP_UNIT): SelectSelector(
             SelectSelectorConfig(
@@ -87,6 +93,27 @@ class TaylorGrillOptionsFlowHandler(config_entries.OptionsFlow):
         # Build schema using current values as defaults
         options_schema = vol.Schema(
             {
+                vol.Required(
+                    CONF_NAME, 
+                    default=self._config_entry.options.get(
+                        CONF_NAME,
+                        self._config_entry.data.get(CONF_NAME, DEFAULT_NAME),
+                    ),
+                ): str, 
+                vol.Optional(
+                    CONF_MANUFACTURER, 
+                    default=self._config_entry.options.get(
+                        CONF_MANUFACTURER,
+                        self._config_entry.data.get(CONF_MANUFACTURER, DEFAULT_MANUFACTURER),
+                    ),
+                ): str, 
+                vol.Optional(
+                    CONF_MODEL,
+                    default=self._config_entry.options.get(
+                        CONF_MODEL,
+                        self._config_entry.data.get(CONF_MODEL, DEFAULT_MODEL),
+                    )
+                ): str, 
                 vol.Optional(
                     CONF_TEMP_UNIT,
                     default=self._config_entry.options.get(

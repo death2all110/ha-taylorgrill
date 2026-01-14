@@ -1,5 +1,7 @@
 """Switch platform for Taylor Grill."""
 import logging
+
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.const import CONF_NAME
 from homeassistant.components import mqtt
@@ -7,7 +9,15 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import CONF_DEVICE_ID
+from .const import (
+    CONF_DEVICE_ID, 
+    DOMAIN,
+    DEFAULT_NAME,
+    CONF_MANUFACTURER,
+    CONF_MODEL,
+    DEFAULT_MANUFACTURER,
+    DEFAULT_MODEL
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -21,10 +31,12 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Taylor Grill switch."""
-    name = entry.data[CONF_NAME]
+    device_name = entry.options.get(CONF_NAME, entry.data.get(CONF_NAME, DEFAULT_NAME))
     device_id = entry.data[CONF_DEVICE_ID]
+    manufacturer = entry.options.get(CONF_MANUFACTURER, entry.data.get(CONF_MANUFACTURER, DEFAULT_MANUFACTURER))
+    model = entry.options.get(CONF_MODEL, entry.data.get(CONF_MODEL, DEFAULT_MODEL))
     
-    async_add_entities([TaylorSmokerSwitch(hass, name, device_id, entry.entry_id)])
+    async_add_entities([TaylorSmokerSwitch(hass, device_name, device_id, manufacturer, model, entry.entry_id)])
 
 
 class TaylorSmokerSwitch(SwitchEntity):
@@ -33,9 +45,13 @@ class TaylorSmokerSwitch(SwitchEntity):
     _attr_has_entity_name = True
     _attr_name = "Power"
     
-    def __init__(self, hass, device_name, device_id, entry_id):
+    def __init__(self, hass, device_name, device_id, manufacturer,model, entry_id):
         self.hass = hass
         self._attr_unique_id = f"{entry_id}_power_switch"
+        self._device_name = device_name
+        self._device_id = device_id
+        self._manufacturer = manufacturer
+        self._model = model
         
         self._topic_cmd = f"{device_id}/app2dev"
         self._topic_state = f"{device_id}/dev2app"
@@ -69,6 +85,16 @@ class TaylorSmokerSwitch(SwitchEntity):
                 self.async_write_ha_state()
             except IndexError:
                 pass
+    
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return information to link this entity with the device."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device_id)},
+            name=self._device_name,
+            manufacturer=self._manufacturer,
+            model=self._model,
+    )
 
     @property
     def is_on(self):

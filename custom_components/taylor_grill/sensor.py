@@ -5,13 +5,25 @@ from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorStateClass,
 )
+
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.const import UnitOfTemperature, CONF_NAME
 from homeassistant.components import mqtt
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import CONF_DEVICE_ID, CONF_TEMP_UNIT, DEFAULT_TEMP_UNIT
+from .const import (
+    CONF_DEVICE_ID, 
+    CONF_TEMP_UNIT, 
+    DEFAULT_TEMP_UNIT, 
+    DOMAIN,
+    DEFAULT_NAME,
+    CONF_MANUFACTURER,
+    CONF_MODEL,
+    DEFAULT_MANUFACTURER,
+    DEFAULT_MODEL
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -21,18 +33,20 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Taylor Grill sensors."""
-    name = entry.data[CONF_NAME]
+    device_name = entry.options.get(CONF_NAME, entry.data.get(CONF_NAME, DEFAULT_NAME))
     device_id = entry.data[CONF_DEVICE_ID]
+    manufacturer = entry.options.get(CONF_MANUFACTURER, entry.data.get(CONF_MANUFACTURER, DEFAULT_MANUFACTURER))
+    model = entry.options.get(CONF_MODEL, entry.data.get(CONF_MODEL, DEFAULT_MODEL))
     
     temp_unit = entry.options.get(
         CONF_TEMP_UNIT, entry.data.get(CONF_TEMP_UNIT, DEFAULT_TEMP_UNIT)
     )
     
     sensors = [
-        TaylorSmokerSensor(hass, name, device_id, entry.entry_id, "Internal Probe", 0, temp_unit),
-        TaylorSmokerSensor(hass, name, device_id, entry.entry_id, "External Probe 1", 1, temp_unit),
-        TaylorSmokerSensor(hass, name, device_id, entry.entry_id, "External Probe 2", 2, temp_unit),
-        TaylorSmokerSensor(hass, name, device_id, entry.entry_id, "External Probe 3", 3, temp_unit),
+        TaylorSmokerSensor(hass, device_name, device_id, manufacturer, model, entry.entry_id, "Internal Probe", 0, temp_unit),
+        TaylorSmokerSensor(hass, device_name, device_id, manufacturer, model, entry.entry_id, "External Probe 1", 1, temp_unit),
+        TaylorSmokerSensor(hass, device_name, device_id, manufacturer, model, entry.entry_id, "External Probe 2", 2, temp_unit),
+        TaylorSmokerSensor(hass, device_name, device_id, manufacturer, model, entry.entry_id, "External Probe 3", 3, temp_unit),
     ]
     
     async_add_entities(sensors)
@@ -45,10 +59,14 @@ class TaylorSmokerSensor(SensorEntity):
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_state_class = SensorStateClass.MEASUREMENT
 
-    def __init__(self, hass, device_name, device_id, entry_id, probe_name, probe_index, temp_unit):
+    def __init__(self, hass, device_name, device_id, manufacturer, model, entry_id, probe_name, probe_index, temp_unit):
         """Initialize the sensor."""
         self.hass = hass
         self._attr_name = probe_name
+        self._device_name = device_name
+        self._device_id = device_id
+        self._manufacturer = manufacturer
+        self._model = model
         self._attr_unique_id = f"{entry_id}_probe_{probe_index}"
         self._probe_index = probe_index
         
@@ -70,6 +88,16 @@ class TaylorSmokerSensor(SensorEntity):
         await mqtt.async_subscribe(
             self.hass, self._topic_state, message_received, encoding=None
         )
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return information to link this entity with the device."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device_id)},
+            name=self._device_name,
+            manufacturer=self._manufacturer,
+            model=self._model,
+    )
 
     def _parse_status(self, payload):
         """Parse the binary status message for specific probes."""

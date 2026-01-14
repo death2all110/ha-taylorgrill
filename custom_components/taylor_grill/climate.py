@@ -4,15 +4,16 @@ import asyncio
 from datetime import timedelta
 import voluptuous as vol
 
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.components.climate import ClimateEntity
 from homeassistant.components.climate.const import (
     HVACMode,
     ClimateEntityFeature,
 )
 from homeassistant.const import (
+    CONF_NAME,
     ATTR_TEMPERATURE,
     UnitOfTemperature,
-    CONF_NAME,
 )
 from homeassistant.components import mqtt
 from homeassistant.config_entries import ConfigEntry
@@ -21,7 +22,17 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers import config_validation as cv
 
-from .const import CONF_DEVICE_ID, CONF_TEMP_UNIT, DEFAULT_TEMP_UNIT
+from .const import (
+    DOMAIN,
+    CONF_DEVICE_ID,
+    CONF_TEMP_UNIT,
+    DEFAULT_TEMP_UNIT,
+    DEFAULT_NAME,
+    CONF_MANUFACTURER,
+    CONF_MODEL,
+    DEFAULT_MANUFACTURER,
+    DEFAULT_MODEL
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -43,8 +54,10 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Taylor Grill climate platform."""
-    name = entry.data[CONF_NAME]
+    device_name = entry.options.get(CONF_NAME, entry.data.get(CONF_NAME, DEFAULT_NAME))
     device_id = entry.data[CONF_DEVICE_ID]
+    manufacturer = entry.options.get(CONF_MANUFACTURER, entry.data.get(CONF_MANUFACTURER, DEFAULT_MANUFACTURER))
+    model = entry.options.get(CONF_MODEL, entry.data.get(CONF_MODEL, DEFAULT_MODEL))
     
     # Hardcoded to 2 seconds to match Android App heartbeat
     poll_interval = 2
@@ -53,7 +66,7 @@ async def async_setup_entry(
         CONF_TEMP_UNIT, entry.data.get(CONF_TEMP_UNIT, DEFAULT_TEMP_UNIT)
     )
     
-    smoker = TaylorSmoker(hass, name, device_id, entry.entry_id, poll_interval, temp_unit)
+    smoker = TaylorSmoker(hass, device_name, device_id, manufacturer, model, entry.entry_id, poll_interval, temp_unit)
     async_add_entities([smoker])
 
 
@@ -64,11 +77,15 @@ class TaylorSmoker(ClimateEntity):
     _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]
     _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
 
-    def __init__(self, hass, name, device_id, unique_id, poll_interval, temp_unit):
+    def __init__(self, hass, device_name, device_id, manufacturer, model, unique_id, poll_interval, temp_unit):
         self.hass = hass
-        self._attr_name = name
+        self._attr_name = device_name
+        self._device_name = device_name
+        self._device_id = device_id
         self._attr_unique_id = unique_id
         self._poll_interval = poll_interval
+        self._manufacturer = manufacturer
+        self._model = model
         self._is_celsius = temp_unit == UnitOfTemperature.CELSIUS
         
         if self._is_celsius:
@@ -89,6 +106,16 @@ class TaylorSmoker(ClimateEntity):
         
         self._hvac_mode = HVACMode.OFF
         self._current_temp = None
+    
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return information to link this entity with the device."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device_id)},
+            name=self._device_name,
+            manufacturer=self._manufacturer,
+            model=self._model,
+    )
 
     async def async_added_to_hass(self):
         """Subscribe to MQTT topics and start polling."""
