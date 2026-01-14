@@ -17,4 +17,3 @@ jobs:
         uses: "hacs/action@main"
         with:
           category: "integration"
-          ignore: "brands" # temporarily ignore brands validation until https://github.com/home-assistant/brands/pull/8914 is merged.
