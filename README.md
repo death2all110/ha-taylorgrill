@@ -112,7 +112,7 @@ Enter GRILLS12345678 (or whatever your log shows) into the setup dialog.
 ## 🛣️ Roadmap:
 **Bluetooth:** Expand support to communicate over bluetooth rather than a hijacked MQTT connection.
 
-**App Compatibility:** See if there is a way to keep the app working.
+~~**App Compatibility:** See if there is a way to keep the app working.~~ **Completed: See "Advanced Configuration" below.**
 
 **Additional/Advanced Features:**
    * **PID:** Explore if it is possible to read/adjust PID (Proportional, Integral, Derivative) values.
@@ -150,6 +150,32 @@ If you are having issues (weird temperatures, commands not working, etc...), the
 ### 4. Can't control the grill?
 * **Check Power State:** Ensure the "Power" switch in Home Assistant matches the physical state of the grill.
 * **Verify Topics:** Enable Debug Logging and look for `Sending Set Temp...`. If you see the log but the grill doesn't beep, the grill might not be subscribed to the `/app2dev` command topic (check your Device ID configuration).
+
+---
+
+## Advanced Configuration
+If you want to keep using the official app alongside this integration, and you have opted for the NAT Redirection method, you can add an additional configuration to your Mosquitto broker to forward messages between the smoker and the cloud server.
+1.  Open your Mosquitto configuration file (usually located at `/etc/mosquitto/mosquitto.conf` or similar).
+2.  Add the following lines to create a bridge to the Taylor Grill cloud server:
+```
+connection taylor_cloud
+address iot.taylorgrill.com:1883
+
+# Connect using the hardcoded credentials from the firmware
+remote_username Taylor
+remote_password YKC6WLIFUZaBaMQU
+
+# CRITICAL: You must masquerade as the Grill so the cloud accepts the data
+# Replace GRILLSxxxxxxxx with your actual Device ID
+remote_clientid GRILLSxxxxxxxx
+
+# Bridge the specific topics for this device
+# Syntax: topic <pattern> <direction> <qos> <local-prefix> <remote-prefix>
+# We map the local topic "GRILLS.../#" to the same topic on the remote
+topic GRILLSxxxxxxxx/# both 0
+```
+3.  Restart Mosquitto to apply the changes.
+4.  Now, the smoker will communicate with both Home Assistant and the cloud server, allowing you to use the official app as well.
 
 ---
 ## Contributing
